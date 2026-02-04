@@ -1,8 +1,12 @@
-# TradingEconomics News to Discord
+# News Notifier → Discord
 
-Fetches latest news from [TradingEconomics](https://tradingeconomics.com) via their API, deduplicates by article ID, and sends notifications with **direct links** to each article to a Discord channel. Use the Discord app on your phone to get push notifications with links that open the TradingEconomics page.
+Fetches latest news from **TradingEconomics** and **RSS feeds** (WSJ, NYT, FT), deduplicates by article ID, and sends notifications with **direct links** to each article to a Discord channel. Use the Discord app on your phone to get push notifications with links to the articles.
 
-TradingEconomics does not offer a public RSS feed; this project uses their [news API](https://docs.tradingeconomics.com/news/latest/) instead.
+**Sources:**
+- TradingEconomics (API)
+- Wall Street Journal — Markets, Economy, US Business
+- New York Times — Business, World, Technology
+- Financial Times — Home, World, Global Economy
 
 ## Prerequisites
 
@@ -58,7 +62,7 @@ Or set `NOTIFIER_INTERVAL_SECONDS=1800` in `.env`. Intervals under 60 seconds ar
 - First run: fetches the latest articles and sends all of them to Discord (then saves state).
 - Later runs: only new articles since the last run are sent. Stop the loop with Ctrl+C.
 
-State is stored in `state/seen_ids.json` (gitignored). The script keeps the last 1000 seen IDs to avoid file growth.
+State is stored in `state/seen_ids.json` (gitignored). The script keeps the last 3000 seen IDs to avoid file growth. Set `RSS_ENABLED=false` in `.env` to disable RSS and use only TradingEconomics.
 
 ## Scheduling
 
@@ -134,9 +138,11 @@ State is stored in your project directory on their disk and persists between run
 | `DISCORD_WEBHOOK_URL` | Yes | Discord webhook URL for the channel where notifications are sent |
 | `TRADING_ECONOMICS_API_KEY` | No | TE API key; if unset, uses `guest:guest` (limited access) |
 | `NOTIFIER_INTERVAL_SECONDS` | No | Loop interval in seconds when using `--loop` (default: 900) |
+| `RSS_ENABLED` | No | Set to `false` to disable RSS feeds (WSJ, NYT, FT); default: enabled |
 
 ## Files
 
-- `news_notifier.py` — Fetch TE news, dedupe, Discord POST.
+- `news_notifier.py` — Fetch TE + RSS news, dedupe, Discord POST.
+- `rss_feeds.py` — RSS fetcher for WSJ, NYT, FT.
 - `run_news_notifier.py` — Entrypoint: load config, run notifier, save state.
 - `state/seen_ids.json` — Persisted seen article IDs (created at first run; gitignored).

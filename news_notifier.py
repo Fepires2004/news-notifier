@@ -1,15 +1,18 @@
 """
-TradingEconomics news notifier: fetch latest news via TE API, deduplicate, and
-post new items to a Discord webhook with direct links to the article pages.
+News notifier: fetches from TradingEconomics API and RSS feeds (WSJ, NYT, FT, Reuters),
+deduplicates by article ID, and posts new items to a Discord webhook.
 """
 
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+from rss_feeds import fetch_rss_articles
 
 load_dotenv()
 
@@ -17,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 TE_BASE_URL = "https://tradingeconomics.com"
 TE_API_URL = "https://api.tradingeconomics.com/news"
-MAX_SEEN_IDS = 1000
+MAX_SEEN_IDS = 3000  # Increased for multi-source
 DEFAULT_LIMIT = 20
 
 
@@ -39,14 +42,21 @@ def get_state_path() -> Path:
 
 
 def load_seen_ids(state_path: Path) -> set[str]:
-    """Load set of seen article IDs from state file. Returns empty set if missing or invalid."""
+    """Load set of seen article IDs from state file. Migrates legacy TE ids to te: prefix."""
     if not state_path.exists():
         return set()
     try:
         with open(state_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         ids = data.get("ids", data) if isinstance(data, dict) else data
-        return set(str(i) for i in ids)
+        result: set[str] = set()
+        for i in ids:
+            s = str(i)
+            if s and ":" not in s and s.isdigit():
+                result.add(f"te:{s}")  # Migrate legacy TE ids
+            else:
+                result.add(s)
+        return result
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Could not load state file %s: %s", state_path, e)
         return set()
@@ -89,18 +99,26 @@ def article_full_url(relative_url: str) -> str:
     return TE_BASE_URL.rstrip("/") + path
 
 
-def send_discord_notification(webhook_url: str, title: str, link: str, description: str | None = None) -> bool:
+def send_discord_notification(
+    webhook_url: str,
+    title: str,
+    link: str,
+    description: str | None = None,
+    source: str | None = None,
+) -> bool:
     """
     POST a single notification to the Discord webhook. Uses content (title + link)
     and optionally an embed. Returns True on success.
     """
-    content = f"{title}\n{link}"
+    prefix = f"[{source}] " if source else ""
+    content = f"{prefix}{title}\n{link}"
     payload = {"content": content}
+    embed_title = f"{prefix}{title}" if prefix else title
     if description:
         snippet = (description[:200] + "…") if len(description) > 200 else description
         payload["embeds"] = [
             {
-                "title": title,
+                "title": embed_title,
                 "url": link,
                 "description": snippet,
                 "color": 3447003,
@@ -122,11 +140,14 @@ def run(
     te_api_key: str | None = None,
     limit: int = DEFAULT_LIMIT,
     state_path: Path | None = None,
+    rss_enabled: bool | None = None,
 ) -> None:
     """
-    Main flow: load seen IDs, fetch TE news, for each new article post to Discord
+    Main flow: load seen IDs, fetch TE + RSS news, for each new article post to Discord
     and add ID to seen set, then persist seen IDs.
     """
+    if rss_enabled is None:
+        rss_enabled = os.getenv("RSS_ENABLED", "true").lower() not in ("false", "0", "no")
     webhook = (discord_webhook_url or get_discord_webhook_url()).strip()
     if not webhook:
         logger.error("DISCORD_WEBHOOK_URL is not set. Set it in .env or pass discord_webhook_url.")
@@ -135,20 +156,41 @@ def run(
     key = te_api_key or get_te_api_key()
     path = state_path or get_state_path()
     seen = load_seen_ids(path)
-    articles = fetch_te_news(key, limit=limit)
 
-    for item in articles:
+    # Fetch TradingEconomics articles
+    te_items = fetch_te_news(key, limit=limit)
+    articles: list[dict] = []
+    for item in te_items:
         aid = item.get("id")
         if aid is None:
             continue
-        aid = str(aid)
-        if aid in seen:
-            continue
-        title = item.get("title") or "No title"
+        aid_str = f"te:{aid}"
         rel_url = item.get("url") or ""
         link = article_full_url(rel_url)
+        articles.append({
+            "id": aid_str,
+            "title": item.get("title") or "No title",
+            "link": link,
+            "description": item.get("description"),
+            "source": "TradingEconomics",
+        })
+
+    # Fetch RSS articles
+    if rss_enabled:
+        rss_items = fetch_rss_articles(limit_per_feed=15)
+        articles.extend(rss_items)
+
+    # Dedupe and notify (with delay to avoid Discord rate limit ~30/min per webhook)
+    for item in articles:
+        aid = item.get("id", "")
+        if not aid or aid in seen:
+            continue
+        title = item.get("title") or "No title"
+        link = item.get("link") or ""
         description = item.get("description")
-        send_discord_notification(webhook, title, link, description)
+        source = item.get("source")
+        send_discord_notification(webhook, title, link, description, source=source)
         seen.add(aid)
+        time.sleep(1)  # ~1/sec to stay under Discord webhook rate limit (~30/min)
 
     save_seen_ids(path, seen)
