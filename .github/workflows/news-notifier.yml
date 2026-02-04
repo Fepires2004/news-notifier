@@ -4,8 +4,8 @@ name: News Notifier
 
 on:
   schedule:
-    # Every 15 minutes
-    - cron: '*/15 * * * *'
+    # Every 45 minutes (keeps private repo under 2,000 Actions min/month)
+    - cron: '*/45 * * * *'
   workflow_dispatch:
     # Allow manual run from Actions tab
 
