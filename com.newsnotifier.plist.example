@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.newsnotifier</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/path/to/python</string>
+		<string>/path/to/newsSummary/run_news_notifier.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/path/to/newsSummary</string>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>StandardOutPath</key>
+	<string>/tmp/newsnotifier.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/newsnotifier.err.log</string>
+	<key>RunAtLoad</key>
+	<false/>
+</dict>
+</plist>
