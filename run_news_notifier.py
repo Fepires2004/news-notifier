@@ -2,7 +2,7 @@
 """
 Entrypoint for TradingEconomics news → Discord notifier.
 Loads config from .env, runs fetch + notify + state persist.
-Run once, in a loop, or via cron/launchd (e.g. every 15–30 minutes).
+Run once, in a loop, or via cron/launchd (e.g. every 5 minutes).
 """
 
 import argparse
